@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SpotComments } from "@/components/SpotComments";
 import { SpotsMap } from "@/components/SpotsMap";
 import type { SpotApiRow } from "@/types/spot";
 import { haversineKm } from "@/lib/geo";
@@ -31,7 +32,7 @@ function googleMapsSearchUrl(lat: number, lng: number) {
 }
 
 export function SpotsExplorer() {
-  const [view, setView] = useState<"map" | "list">("map");
+  const [view, setView] = useState<"map" | "list">("list");
   const [searchCenter, setSearchCenter] = useState(PARIS);
   const [mapViewportCenter, setMapViewportCenter] = useState(PARIS);
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(
@@ -47,15 +48,21 @@ export function SpotsExplorer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  /** Bloque le fetch API jusqu’à la 1ʳᵉ tentative de géoloc (évite un hit Paris inutile). */
+  const [autoGeoPending, setAutoGeoPending] = useState(true);
 
   const selectedSpot = useMemo(
     () => spots.find((s) => s.sourceId === selectedId) ?? null,
     [spots, selectedId],
   );
 
-  const locate = useCallback(() => {
-    if (!navigator.geolocation) {
+  const locate = useCallback((isInitialAuto = false) => {
+    const finishInitial = () => {
+      if (isInitialAuto) setAutoGeoPending(false);
+    };
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
       setGeoStatus("GÉOLOC NON SUPPORTÉE");
+      finishInitial();
       return;
     }
     setGeoStatus("LOCALISATION…");
@@ -68,15 +75,25 @@ export function SpotsExplorer() {
         setMapViewportCenter({ lat, lng });
         setMapFocusNonce((n) => n + 1);
         setGeoStatus(null);
+        finishInitial();
       },
       () => {
         setGeoStatus("REFUS / INDISPONIBLE");
+        finishInitial();
       },
       { enableHighAccuracy: true, maximumAge: 60_000, timeout: 15_000 },
     );
   }, []);
 
+  const didAutoLocate = useRef(false);
   useEffect(() => {
+    if (didAutoLocate.current) return;
+    didAutoLocate.current = true;
+    locate(true);
+  }, [locate]);
+
+  useEffect(() => {
+    if (autoGeoPending) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       setLoading(true);
@@ -111,7 +128,14 @@ export function SpotsExplorer() {
       ctrl.abort();
       clearTimeout(t);
     };
-  }, [searchCenter.lat, searchCenter.lng, radiusKm, bearingDeg, bearingHalf]);
+  }, [
+    autoGeoPending,
+    searchCenter.lat,
+    searchCenter.lng,
+    radiusKm,
+    bearingDeg,
+    bearingHalf,
+  ]);
 
   const searchHereDeltaKm = useMemo(
     () =>
@@ -148,32 +172,36 @@ export function SpotsExplorer() {
           SPOTIK
         </h1>
         <p className="mt-2 font-mono text-[11px] leading-relaxed text-spotik-muted">
-          CARTE OU LISTE · TRI DISTANCE · FILTRE CAP (EX. SUD)
+          LISTE OU CARTE · TRI DISTANCE · FILTRE CAP (EX. SUD)
         </p>
       </header>
 
       <div className="mb-3 flex flex-wrap items-stretch gap-0 border border-spotik-border">
-        <button type="button" onClick={locate} className="spotik-btn min-h-12 flex-1 border-r border-spotik-border sm:flex-none">
+        <button
+          type="button"
+          onClick={() => locate()}
+          className="spotik-btn min-h-12 flex-1 border-r border-spotik-border sm:flex-none"
+        >
           MA POSITION
         </button>
         <div className="flex min-h-12 flex-1">
           <button
             type="button"
-            onClick={() => setView("map")}
-            className={`flex-1 border-r border-spotik-border font-mono text-xs font-semibold uppercase tracking-widest ${
-              view === "map" ? "bg-spotik-orange text-black" : "bg-black text-white hover:bg-spotik-orange/20"
-            }`}
-          >
-            CARTE
-          </button>
-          <button
-            type="button"
             onClick={() => setView("list")}
-            className={`flex-1 font-mono text-xs font-semibold uppercase tracking-widest ${
+            className={`flex-1 border-r border-spotik-border font-mono text-xs font-semibold uppercase tracking-widest ${
               view === "list" ? "bg-spotik-orange text-black" : "bg-black text-white hover:bg-spotik-orange/20"
             }`}
           >
             LISTE
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("map")}
+            className={`flex-1 font-mono text-xs font-semibold uppercase tracking-widest ${
+              view === "map" ? "bg-spotik-orange text-black" : "bg-black text-white hover:bg-spotik-orange/20"
+            }`}
+          >
+            CARTE
           </button>
         </div>
         {loading ? (
@@ -267,29 +295,7 @@ export function SpotsExplorer() {
         </div>
       </section>
 
-      {view === "map" ? (
-        <div className="relative">
-          {showSearchHere ? (
-            <button
-              type="button"
-              onClick={searchHere}
-              className="absolute left-1/2 top-3 z-20 -translate-x-1/2 border-2 border-white bg-black px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-none hover:border-spotik-orange hover:bg-spotik-orange hover:text-black"
-            >
-              Rechercher ici
-            </button>
-          ) : null}
-          <SpotsMap
-            spots={spots}
-            searchCenterLat={searchCenter.lat}
-            searchCenterLng={searchCenter.lng}
-            gpsLocation={gpsLocation}
-            selectedId={selectedId}
-            onSelectSpot={setSelectedId}
-            onViewportCenterChange={onViewportCenterChange}
-            mapFocusNonce={mapFocusNonce}
-          />
-        </div>
-      ) : (
+      {view === "list" ? (
         <ul className="flex max-h-[min(60dvh,520px)] flex-col gap-0 overflow-y-auto border border-spotik-border">
           {spots.map((s) => (
             <li key={s.sourceId} className="border-b border-spotik-border last:border-b-0">
@@ -339,12 +345,34 @@ export function SpotsExplorer() {
               </div>
             </li>
           ))}
-          {!spots.length && !loading ? (
+          {!spots.length && !loading && !autoGeoPending ? (
             <li className="border-b border-spotik-border px-3 py-10 text-center font-mono text-xs uppercase tracking-widest text-spotik-muted">
               AUCUN SPOT — RAYON OU MONGO
             </li>
           ) : null}
         </ul>
+      ) : (
+        <div className="relative">
+          {showSearchHere ? (
+            <button
+              type="button"
+              onClick={searchHere}
+              className="absolute left-1/2 top-3 z-20 -translate-x-1/2 border-2 border-white bg-black px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-none hover:border-spotik-orange hover:bg-spotik-orange hover:text-black"
+            >
+              Rechercher ici
+            </button>
+          ) : null}
+          <SpotsMap
+            spots={spots}
+            searchCenterLat={searchCenter.lat}
+            searchCenterLng={searchCenter.lng}
+            gpsLocation={gpsLocation}
+            selectedId={selectedId}
+            onSelectSpot={setSelectedId}
+            onViewportCenterChange={onViewportCenterChange}
+            mapFocusNonce={mapFocusNonce}
+          />
+        </div>
       )}
 
       {selectedSpot ? (
@@ -388,6 +416,7 @@ export function SpotsExplorer() {
               </a>
             ) : null}
           </div>
+          <SpotComments sourceId={selectedSpot.sourceId} />
         </aside>
       ) : null}
     </div>

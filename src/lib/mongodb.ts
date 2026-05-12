@@ -23,3 +23,4 @@ export async function getDb(): Promise<Db> {
 }
 
 export const SPOTS_COLLECTION = "spots";
+export const SPOT_COMMENTS_COLLECTION = "spot_comments";
