@@ -18,11 +18,56 @@ function formatFr(iso: string) {
   }
 }
 
+function StarsDisplay({ value }: { value: number }) {
+  return (
+    <span
+      className="inline-flex gap-px font-mono text-base leading-none text-spotik-orange"
+      aria-label={`${value} sur 5`}
+    >
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span key={i} className={i <= value ? "text-spotik-orange" : "text-spotik-border"}>
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function StarsPicker({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="mb-2">
+      <span className="spotik-label mb-1 block">NOTE /5</span>
+      <div className="flex gap-0 border border-spotik-border" role="group" aria-label="Note sur 5">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            className={`min-h-11 min-w-0 flex-1 border-r border-spotik-border py-2 font-mono text-lg leading-none last:border-r-0 ${
+              n <= value ? "bg-spotik-orange text-black" : "bg-black text-spotik-muted hover:bg-white/5"
+            }`}
+            aria-pressed={n <= value}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SpotComments({ sourceId }: Props) {
   const [comments, setComments] = useState<SpotCommentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [rating, setRating] = useState(5);
   const [posting, setPosting] = useState(false);
 
   const load = useCallback(async () => {
@@ -61,7 +106,7 @@ export function SpotComments({ sourceId }: Props) {
       const res = await fetch(`/api/spots/${sourceId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, rating }),
       });
       const data = (await res.json()) as {
         comment?: SpotCommentRow;
@@ -74,6 +119,7 @@ export function SpotComments({ sourceId }: Props) {
       if (data.comment) {
         setComments((prev) => [data.comment!, ...prev]);
         setDraft("");
+        setRating(5);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -86,7 +132,7 @@ export function SpotComments({ sourceId }: Props) {
     <div className="mt-4 border-t border-spotik-border pt-4">
       <p className="spotik-label mb-2">NOTES · COMMUNAUTÉ</p>
       <p className="mb-3 font-mono text-[10px] leading-relaxed text-spotik-muted">
-        Pas de compte : tout le monde lit et écrit les mêmes notes pour ce spot.
+        Pas de compte : tout le monde lit et écrit les mêmes notes pour ce spot. Note sur 5 + commentaire.
       </p>
 
       {error ? (
@@ -108,8 +154,15 @@ export function SpotComments({ sourceId }: Props) {
           <ul className="divide-y divide-spotik-border">
             {comments.map((c) => (
               <li key={c.id} className="px-3 py-2">
-                <div className="font-mono text-[9px] uppercase tracking-widest text-spotik-orange">
-                  {formatFr(c.createdAt)}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-mono text-[9px] uppercase tracking-widest text-spotik-orange">
+                    {formatFr(c.createdAt)}
+                  </div>
+                  {c.rating != null ? (
+                    <StarsDisplay value={c.rating} />
+                  ) : (
+                    <span className="font-mono text-[9px] text-spotik-muted">— /5</span>
+                  )}
                 </div>
                 <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs leading-snug text-white">
                   {c.text}
@@ -120,7 +173,9 @@ export function SpotComments({ sourceId }: Props) {
         )}
       </div>
 
-      <label className="spotik-label mb-1 block">AJOUTER UNE NOTE</label>
+      <StarsPicker value={rating} onChange={setRating} />
+
+      <label className="spotik-label mb-1 block">COMMENTAIRE</label>
       <textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}

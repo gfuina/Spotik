@@ -150,7 +150,6 @@ type Props = {
   searchCenterLng: number;
   /** Position GPS si connue (2e marqueur si assez loin du centre de recherche) */
   gpsLocation: { lat: number; lng: number } | null;
-  selectedId: number | null;
   onSelectSpot: (id: number | null) => void;
   /** Centre géographique actuel de la vue carte */
   onViewportCenterChange: (lat: number, lng: number) => void;
@@ -163,7 +162,6 @@ export function SpotsMap({
   searchCenterLat,
   searchCenterLng,
   gpsLocation,
-  selectedId,
   onSelectSpot,
   onViewportCenterChange,
   mapFocusNonce,
@@ -256,17 +254,16 @@ export function SpotsMap({
       }
       map.loadImage(url, (err, image) => {
         if (err || !image || image instanceof ImageData) return;
-          if (!spotsRef.current.some((x) => spotPhotoIconId(x.sourceId) === id))
-            return;
-          try {
-            const canvas = makeRoundedPhotoIcon(image);
-            if (map.hasImage(id)) map.updateImage(id, asStyleImage(canvas));
-            else map.addImage(id, asStyleImage(canvas), { pixelRatio: 2 });
-          } catch {
-            /* CORS / decode */
-          }
-        },
-      );
+        if (!spotsRef.current.some((x) => spotPhotoIconId(x.sourceId) === id))
+          return;
+        try {
+          const canvas = makeRoundedPhotoIcon(image);
+          if (map.hasImage(id)) map.updateImage(id, asStyleImage(canvas));
+          else map.addImage(id, asStyleImage(canvas), { pixelRatio: 2 });
+        } catch {
+          /* CORS / decode */
+        }
+      });
     }
     cleanupStaleThumbImages(map, keep);
   }, []);
@@ -329,16 +326,6 @@ export function SpotsMap({
       </div>
     );
   }
-
-  const iconHaloWidth: unknown =
-    selectedId != null
-      ? [
-          "case",
-          ["==", ["to-number", ["get", "sourceId"]], selectedId],
-          2.5,
-          0,
-        ]
-      : 0;
 
   return (
     <div className="relative h-[min(70dvh,560px)] w-full overflow-hidden border-2 border-spotik-border bg-black">
@@ -450,10 +437,6 @@ export function SpotsMap({
               ],
               "icon-allow-overlap": true,
               "icon-ignore-placement": true,
-            }}
-            paint={{
-              "icon-halo-color": "#ffffff",
-              "icon-halo-width": iconHaloWidth as never,
             }}
           />
         </Source>

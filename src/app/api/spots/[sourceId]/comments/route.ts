@@ -14,6 +14,7 @@ type CommentDoc = {
   sourceId: number;
   text: string;
   createdAt: Date;
+  rating?: number;
 };
 
 let indexEnsured: Promise<void> | null = null;
@@ -58,6 +59,13 @@ export async function GET(
       id: d._id.toHexString(),
       text: d.text,
       createdAt: d.createdAt.toISOString(),
+      rating:
+        typeof d.rating === "number" &&
+        Number.isInteger(d.rating) &&
+        d.rating >= 1 &&
+        d.rating <= 5
+          ? d.rating
+          : null,
     }));
 
     return NextResponse.json({ comments });
@@ -103,6 +111,20 @@ export async function POST(
       );
     }
 
+    const ratingRaw = (body as { rating?: unknown }).rating;
+    const ratingNum =
+      typeof ratingRaw === "number" && Number.isInteger(ratingRaw)
+        ? ratingRaw
+        : typeof ratingRaw === "string" && ratingRaw.trim() !== ""
+          ? Number(ratingRaw)
+          : NaN;
+    if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+      return NextResponse.json(
+        { error: "Note obligatoire : 1 à 5 étoiles" },
+        { status: 400 },
+      );
+    }
+
     const db = await getDb();
     const spots = db.collection(SPOTS_COLLECTION);
     const exists = await spots.findOne(
@@ -120,11 +142,13 @@ export async function POST(
       sourceId,
       text,
       createdAt,
+      rating: ratingNum,
     });
     const row: SpotCommentRow = {
       id: ins.insertedId.toHexString(),
       text,
       createdAt: createdAt.toISOString(),
+      rating: ratingNum,
     };
     return NextResponse.json({ comment: row }, { status: 201 });
   } catch (e) {

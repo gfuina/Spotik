@@ -39,3 +39,17 @@ export type SpotApiRow = {
   disciplines: SpotDiscipline[];
   sourceCanonicalUrl: string | null;
 };
+
+/** Fiche spot (page détail) — pas de distance / cap (dépend du point de vue). */
+export type SpotDetail = {
+  sourceId: number;
+  title: string;
+  name: string | null;
+  address: string | null;
+  lat: number;
+  lng: number;
+  thumbnailUrl: string | null;
+  imageUrls: string[];
+  equipments: SpotEquipment[];
+  disciplines: SpotDiscipline[];
+};

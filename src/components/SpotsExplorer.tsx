@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SpotComments } from "@/components/SpotComments";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { SpotsMap } from "@/components/SpotsMap";
 import type { SpotApiRow } from "@/types/spot";
 import { haversineKm } from "@/lib/geo";
@@ -47,13 +48,16 @@ export function SpotsExplorer() {
   const [spots, setSpots] = useState<SpotApiRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
   /** Bloque le fetch API jusqu’à la 1ʳᵉ tentative de géoloc (évite un hit Paris inutile). */
   const [autoGeoPending, setAutoGeoPending] = useState(true);
 
-  const selectedSpot = useMemo(
-    () => spots.find((s) => s.sourceId === selectedId) ?? null,
-    [spots, selectedId],
+  const router = useRouter();
+
+  const onSelectSpotOnMap = useCallback(
+    (id: number | null) => {
+      if (id != null) router.push(`/spot/${id}`);
+    },
+    [router],
   );
 
   const locate = useCallback((isInitialAuto = false) => {
@@ -325,16 +329,9 @@ export function SpotsExplorer() {
           {spots.map((s) => (
             <li key={s.sourceId} className="border-b border-spotik-border last:border-b-0">
               <div className="flex min-w-0">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedId(selectedId === s.sourceId ? null : s.sourceId)
-                  }
-                  className={`flex min-w-0 flex-1 gap-0 border-l-4 p-0 text-left transition-colors ${
-                    selectedId === s.sourceId
-                      ? "border-l-spotik-orange bg-spotik-orange/10"
-                      : "border-l-transparent hover:bg-white/[0.03]"
-                  }`}
+                <Link
+                  href={`/spot/${s.sourceId}`}
+                  className="flex min-w-0 flex-1 gap-0 border-l-4 border-l-transparent p-0 text-left transition-colors hover:bg-white/[0.03]"
                 >
                   {(s.imageUrls?.[0] ?? s.thumbnailUrl) ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -358,7 +355,7 @@ export function SpotsExplorer() {
                       <span>CAP {Math.round(s.bearingDeg)}°</span>
                     </div>
                   </div>
-                </button>
+                </Link>
                 <a
                   href={googleMapsSearchUrl(s.lat, s.lng)}
                   target="_blank"
@@ -392,58 +389,12 @@ export function SpotsExplorer() {
             searchCenterLat={searchCenter.lat}
             searchCenterLng={searchCenter.lng}
             gpsLocation={gpsLocation}
-            selectedId={selectedId}
-            onSelectSpot={setSelectedId}
+            onSelectSpot={onSelectSpotOnMap}
             onViewportCenterChange={onViewportCenterChange}
             mapFocusNonce={mapFocusNonce}
           />
         </div>
       )}
-
-      {selectedSpot ? (
-        <aside className="sticky bottom-0 z-10 mt-3 border-2 border-white bg-black p-4">
-          <div className="flex justify-between gap-3 border-b border-spotik-border pb-3">
-            <div className="min-w-0">
-              <p className="spotik-label mb-1">SÉLECTION</p>
-              <div className="font-spotik text-xl leading-tight tracking-wide text-white">
-                {selectedSpot.title.toUpperCase()}
-              </div>
-              <div className="mt-2 font-mono text-xs text-spotik-orange">
-                DIST {selectedSpot.distanceKm.toFixed(1)} KM · CAP{" "}
-                {Math.round(selectedSpot.bearingDeg)}°
-              </div>
-            </div>
-            <button
-              type="button"
-              className="h-10 shrink-0 border border-white px-3 font-mono text-[10px] font-bold uppercase tracking-widest text-white hover:bg-spotik-orange hover:text-black"
-              onClick={() => setSelectedId(null)}
-            >
-              FERMER
-            </button>
-          </div>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <a
-              href={googleMapsSearchUrl(selectedSpot.lat, selectedSpot.lng)}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center border border-white px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-white hover:bg-white hover:text-black"
-            >
-              Ouvrir sur Google Maps
-            </a>
-            {selectedSpot.sourceCanonicalUrl ? (
-              <a
-                href={selectedSpot.sourceCanonicalUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center border border-spotik-orange px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-spotik-orange hover:bg-spotik-orange hover:text-black"
-              >
-                Source externe →
-              </a>
-            ) : null}
-          </div>
-          <SpotComments sourceId={selectedSpot.sourceId} />
-        </aside>
-      ) : null}
     </div>
   );
 }
