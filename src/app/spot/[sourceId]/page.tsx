@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { NearestParkingDirections } from "@/components/NearestParkingDirections";
 import { SpotComments } from "@/components/SpotComments";
 import { getSpotBySourceId } from "@/lib/getSpotBySourceId";
 import type { SpotDetail } from "@/types/spot";
@@ -135,7 +136,7 @@ export default async function SpotPage({
         </section>
       ) : null}
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-col gap-3">
         <a
           href={googleMapsSearchUrl(spot.lat, spot.lng)}
           target="_blank"
@@ -144,6 +145,7 @@ export default async function SpotPage({
         >
           Ouvrir sur Google Maps
         </a>
+        <NearestParkingDirections sourceId={spot.sourceId} />
       </div>
 
       <section className="border-t border-spotik-border pt-4">
