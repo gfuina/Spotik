@@ -164,6 +164,12 @@ export function SpotsExplorer() {
     setMapViewportCenter({ lat, lng });
   }, []);
 
+  const advancedFiltersDirty = useMemo(
+    () =>
+      bearingDeg != null || radiusKm !== 100 || bearingHalf !== 45,
+    [bearingDeg, radiusKm, bearingHalf],
+  );
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col border-x border-spotik-border px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-[max(env(safe-area-inset-top),12px)]">
       <header className="mb-4 border-b border-spotik-border pb-4">
@@ -172,7 +178,7 @@ export function SpotsExplorer() {
           SPOTIK
         </h1>
         <p className="mt-2 font-mono text-[11px] leading-relaxed text-spotik-muted">
-          LISTE OU CARTE · TRI DISTANCE · FILTRE CAP (EX. SUD)
+          LISTE OU CARTE · TRI DISTANCE
         </p>
       </header>
 
@@ -222,78 +228,97 @@ export function SpotsExplorer() {
         </p>
       ) : null}
 
-      <section className="spotik-box mb-3 grid gap-4 p-4">
-        <div>
-          <span className="spotik-label">RAYON</span>
-          <div className="mt-1 flex items-baseline gap-2 border-b border-spotik-border pb-2">
-            <span className="font-mono text-2xl tabular-nums text-white">
-              {radiusKm}
+      <details className="mb-3 border border-dashed border-spotik-border bg-black/30 [&_summary::-webkit-details-marker]:hidden">
+        <summary className="cursor-pointer list-none px-3 py-2.5 font-mono text-[10px] uppercase tracking-[0.16em] text-spotik-muted transition-colors hover:bg-white/[0.04] hover:text-spotik-orange open:border-b open:border-spotik-border open:bg-black open:text-spotik-muted">
+          <span className="flex items-start justify-between gap-2">
+            <span>
+              <span className="text-white/90">Paramètres avancés</span>
+              <span className="mt-1 block text-[9px] font-normal normal-case tracking-normal text-spotik-muted/70">
+                Rayon · cap (rose des vents)
+              </span>
             </span>
-            <span className="font-mono text-xs text-spotik-muted">KM</span>
+            {advancedFiltersDirty ? (
+              <span
+                className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-spotik-orange"
+                title="Filtres modifiés"
+                aria-hidden
+              />
+            ) : null}
+          </span>
+        </summary>
+        <div className="spotik-box grid gap-4 border-0 p-4">
+          <div>
+            <span className="spotik-label">RAYON</span>
+            <div className="mt-1 flex items-baseline gap-2 border-b border-spotik-border pb-2">
+              <span className="font-mono text-2xl tabular-nums text-white">
+                {radiusKm}
+              </span>
+              <span className="font-mono text-xs text-spotik-muted">KM</span>
+            </div>
+            <input
+              type="range"
+              min={10}
+              max={300}
+              step={5}
+              value={radiusKm}
+              onChange={(e) => setRadiusKm(Number(e.target.value))}
+              className="mt-3 w-full"
+            />
           </div>
-          <input
-            type="range"
-            min={10}
-            max={300}
-            step={5}
-            value={radiusKm}
-            onChange={(e) => setRadiusKm(Number(e.target.value))}
-            className="mt-3 w-full"
-          />
-        </div>
 
-        <div>
-          <span className="spotik-label">CAP PRÉFÉRÉ</span>
-          <div className="mt-2 flex flex-wrap gap-0 border border-spotik-border">
-            <button
-              type="button"
-              onClick={() => setBearingDeg(null)}
-              className={`min-h-10 min-w-[3.25rem] border-r border-spotik-border font-mono text-xs font-bold uppercase ${
-                bearingDeg == null
-                  ? "bg-spotik-orange text-black"
-                  : "bg-black text-white hover:bg-white/5"
-              }`}
-            >
-              ALL
-            </button>
-            {CARDINALS.map((c, i) => (
+          <div>
+            <span className="spotik-label">CAP PRÉFÉRÉ</span>
+            <div className="mt-2 flex flex-wrap gap-0 border border-spotik-border">
               <button
-                key={c.label}
                 type="button"
-                onClick={() => setBearingDeg(c.deg)}
-                className={`min-h-10 min-w-10 border-spotik-border font-mono text-xs font-bold ${
-                  i < CARDINALS.length - 1 ? "border-r" : ""
-                } ${
-                  bearingDeg === c.deg
+                onClick={() => setBearingDeg(null)}
+                className={`min-h-10 min-w-[3.25rem] border-r border-spotik-border font-mono text-xs font-bold uppercase ${
+                  bearingDeg == null
                     ? "bg-spotik-orange text-black"
                     : "bg-black text-white hover:bg-white/5"
                 }`}
               >
-                {c.label}
+                ALL
               </button>
-            ))}
-          </div>
-          {bearingDeg != null ? (
-            <div className="mt-4 border-t border-spotik-border pt-4">
-              <span className="spotik-label">OUVERTURE SECTEUR</span>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="font-mono text-xl tabular-nums text-spotik-orange">
-                  ±{bearingHalf}°
-                </span>
-              </div>
-              <input
-                type="range"
-                min={15}
-                max={90}
-                step={5}
-                value={bearingHalf}
-                onChange={(e) => setBearingHalf(Number(e.target.value))}
-                className="mt-2 w-full"
-              />
+              {CARDINALS.map((c, i) => (
+                <button
+                  key={c.label}
+                  type="button"
+                  onClick={() => setBearingDeg(c.deg)}
+                  className={`min-h-10 min-w-10 border-spotik-border font-mono text-xs font-bold ${
+                    i < CARDINALS.length - 1 ? "border-r" : ""
+                  } ${
+                    bearingDeg === c.deg
+                      ? "bg-spotik-orange text-black"
+                      : "bg-black text-white hover:bg-white/5"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
             </div>
-          ) : null}
+            {bearingDeg != null ? (
+              <div className="mt-4 border-t border-spotik-border pt-4">
+                <span className="spotik-label">OUVERTURE SECTEUR</span>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="font-mono text-xl tabular-nums text-spotik-orange">
+                    ±{bearingHalf}°
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={15}
+                  max={90}
+                  step={5}
+                  value={bearingHalf}
+                  onChange={(e) => setBearingHalf(Number(e.target.value))}
+                  className="mt-2 w-full"
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
-      </section>
+      </details>
 
       {view === "list" ? (
         <ul className="flex max-h-[min(60dvh,520px)] flex-col gap-0 overflow-y-auto border border-spotik-border">
