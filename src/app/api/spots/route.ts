@@ -5,6 +5,10 @@ import {
   bearingInSector,
   haversineKm,
 } from "@/lib/geo";
+import {
+  parseEquipmentFiltersFromUrl,
+  spotMatchesEquipmentFilterIds,
+} from "@/lib/equipmentFilters";
 import type { SpotApiRow, SpotDocument } from "@/types/spot";
 
 export const runtime = "nodejs";
@@ -40,6 +44,7 @@ export async function GET(req: Request) {
       searchParams.get("bearingHalfWidthDeg"),
       45,
     );
+    const equipFilterIds = parseEquipmentFiltersFromUrl(searchParams);
 
     const radiusRad = radiusKm / EARTH_RADIUS_KM;
 
@@ -99,6 +104,12 @@ export async function GET(req: Request) {
       );
     }
 
+    if (equipFilterIds.length > 0) {
+      rows = rows.filter((r) =>
+        spotMatchesEquipmentFilterIds(r.equipments, equipFilterIds),
+      );
+    }
+
     rows.sort((a, b) => a.distanceKm - b.distanceKm);
     rows = rows.slice(0, limit);
 
@@ -108,6 +119,7 @@ export async function GET(req: Request) {
       bearingDeg: bearingCenter,
       bearingHalfWidthDeg:
         bearingCenter != null ? bearingHalfWidth : undefined,
+      equipFilters: equipFilterIds.length ? equipFilterIds : undefined,
       count: rows.length,
       spots: rows,
     });

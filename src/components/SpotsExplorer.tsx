@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { SpotsMap } from "@/components/SpotsMap";
 import { SpotListCompass } from "@/components/SpotListCompass";
 import type { SpotApiRow } from "@/types/spot";
+import {
+  EQUIPMENT_FILTERS,
+  type EquipmentFilterId,
+} from "@/lib/equipmentFilters";
 import { bearingDeg as geoBearingDeg, bearingToRose8FullFr, haversineKm } from "@/lib/geo";
 
 const PARIS = { lat: 48.8566, lng: 2.3522 };
@@ -33,6 +37,22 @@ function googleMapsSearchUrl(lat: number, lng: number) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
 }
 
+type TravelMetric = {
+  sourceId: number;
+  routeDistanceKm: number | null;
+  routeDurationSec: number | null;
+};
+
+function formatRouteDuration(sec: number | null): string {
+  if (sec == null || !Number.isFinite(sec)) return "—";
+  if (sec < 60) return "< 1 min";
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m > 0 ? `${h} h ${m} min` : `${h} h`;
+}
+
 export function SpotsExplorer() {
   const [view, setView] = useState<"map" | "list">("list");
   const [searchCenter, setSearchCenter] = useState(PARIS);
@@ -46,9 +66,18 @@ export function SpotsExplorer() {
   const [radiusKm, setRadiusKm] = useState(100);
   const [bearingDeg, setBearingDeg] = useState<number | null>(null);
   const [bearingHalf, setBearingHalf] = useState(45);
+  /** AND : le spot doit avoir au moins un équipement par catégorie sélectionnée */
+  const [equipmentFilters, setEquipmentFilters] = useState<EquipmentFilterId[]>(
+    [],
+  );
   const [spots, setSpots] = useState<SpotApiRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [travelById, setTravelById] = useState<
+    Record<number, { routeDistanceKm: number | null; routeDurationSec: number | null }>
+  >({});
+  const [travelLoading, setTravelLoading] = useState(false);
+  const [travelError, setTravelError] = useState<string | null>(null);
   /** Bloque le fetch API jusqu’à la 1ʳᵉ tentative de géoloc (évite un hit Paris inutile). */
   const [autoGeoPending, setAutoGeoPending] = useState(true);
 
@@ -107,7 +136,13 @@ export function SpotsExplorer() {
       u.searchParams.set("lat", String(searchCenter.lat));
       u.searchParams.set("lng", String(searchCenter.lng));
       u.searchParams.set("radiusKm", String(radiusKm));
-      u.searchParams.set("limit", "80");
+      u.searchParams.set(
+        "limit",
+        equipmentFilters.length > 0 ? "200" : "80",
+      );
+      for (const id of equipmentFilters) {
+        u.searchParams.append("equip", id);
+      }
       if (bearingDeg != null) {
         u.searchParams.set("bearingDeg", String(bearingDeg));
         u.searchParams.set("bearingHalfWidthDeg", String(bearingHalf));
@@ -140,6 +175,80 @@ export function SpotsExplorer() {
     radiusKm,
     bearingDeg,
     bearingHalf,
+    equipmentFilters,
+  ]);
+
+  const spotsLoading = autoGeoPending || loading;
+
+  useEffect(() => {
+    const ac = new AbortController();
+    if (spotsLoading || spots.length === 0) {
+      setTravelById({});
+      setTravelLoading(false);
+      setTravelError(null);
+      return () => ac.abort();
+    }
+
+    const refLat = gpsLocation?.lat ?? searchCenter.lat;
+    const refLng = gpsLocation?.lng ?? searchCenter.lng;
+
+    setTravelLoading(true);
+    setTravelError(null);
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/spots/travel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: ac.signal,
+          body: JSON.stringify({
+            lat: refLat,
+            lng: refLng,
+            spots: spots.map((s) => ({
+              sourceId: s.sourceId,
+              lat: s.lat,
+              lng: s.lng,
+            })),
+          }),
+        });
+        const data = (await res.json()) as {
+          metrics?: TravelMetric[];
+          error?: string;
+        };
+        if (ac.signal.aborted) return;
+        if (!res.ok) {
+          setTravelError(data.error ?? res.statusText);
+          setTravelById({});
+          return;
+        }
+        const next: Record<
+          number,
+          { routeDistanceKm: number | null; routeDurationSec: number | null }
+        > = {};
+        for (const m of data.metrics ?? []) {
+          next[m.sourceId] = {
+            routeDistanceKm: m.routeDistanceKm,
+            routeDurationSec: m.routeDurationSec,
+          };
+        }
+        setTravelById(next);
+      } catch (e) {
+        if (ac.signal.aborted) return;
+        setTravelError(e instanceof Error ? e.message : String(e));
+        setTravelById({});
+      } finally {
+        if (!ac.signal.aborted) setTravelLoading(false);
+      }
+    })();
+
+    return () => ac.abort();
+  }, [
+    spots,
+    spotsLoading,
+    gpsLocation?.lat,
+    gpsLocation?.lng,
+    searchCenter.lat,
+    searchCenter.lng,
   ]);
 
   const searchHereDeltaKm = useMemo(
@@ -171,11 +280,22 @@ export function SpotsExplorer() {
 
   const advancedFiltersDirty = useMemo(
     () =>
-      bearingDeg != null || radiusKm !== 100 || bearingHalf !== 45,
-    [bearingDeg, radiusKm, bearingHalf],
+      bearingDeg != null ||
+      radiusKm !== 100 ||
+      bearingHalf !== 45 ||
+      equipmentFilters.length > 0,
+    [bearingDeg, radiusKm, bearingHalf, equipmentFilters.length],
   );
 
-  const spotsLoading = autoGeoPending || loading;
+  const toggleEquipmentFilter = useCallback((id: EquipmentFilterId) => {
+    setEquipmentFilters((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }, []);
+
+  const clearEquipmentFilters = useCallback(() => {
+    setEquipmentFilters([]);
+  }, []);
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col border-x border-spotik-border px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-[max(env(safe-area-inset-top),12px)]">
@@ -227,6 +347,11 @@ export function SpotsExplorer() {
       {error ? (
         <p className="mb-3 border border-red-600 bg-black px-3 py-2 font-mono text-xs uppercase tracking-wide text-red-500">
           {error}
+        </p>
+      ) : null}
+      {travelError && !spotsLoading ? (
+        <p className="mb-2 border border-spotik-border bg-black px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-spotik-muted">
+          Itinéraire piéton : {travelError}
         </p>
       ) : null}
 
@@ -322,6 +447,44 @@ export function SpotsExplorer() {
         </div>
       </details>
 
+      <div className="mb-3 border border-spotik-border bg-black/30 px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="spotik-label">ÉQUIPEMENTS</span>
+          {equipmentFilters.length > 0 ? (
+            <button
+              type="button"
+              onClick={clearEquipmentFilters}
+              className="font-mono text-[9px] uppercase tracking-widest text-spotik-muted underline decoration-spotik-border underline-offset-2 hover:text-spotik-orange"
+            >
+              Tout effacer
+            </button>
+          ) : null}
+        </div>
+        <p className="mt-1 font-mono text-[9px] leading-relaxed text-spotik-muted/80">
+          Un spot doit avoir <span className="text-white/80">tous</span> les
+          types cochés (titres importés, FR/EN).
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {EQUIPMENT_FILTERS.map((def) => {
+            const on = equipmentFilters.includes(def.id);
+            return (
+              <button
+                key={def.id}
+                type="button"
+                onClick={() => toggleEquipmentFilter(def.id)}
+                className={`border px-2 py-1.5 font-mono text-[9px] font-semibold uppercase leading-tight tracking-wide transition-colors ${
+                  on
+                    ? "border-spotik-orange bg-spotik-orange text-black"
+                    : "border-spotik-border bg-black text-spotik-muted hover:border-white/30 hover:text-white"
+                }`}
+              >
+                {def.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {view === "list" ? (
         <div className="relative min-h-[min(50dvh,400px)] border border-spotik-border bg-black">
           <ul
@@ -335,6 +498,7 @@ export function SpotsExplorer() {
               const listBearing = geoBearingDeg(refLat, refLng, s.lat, s.lng);
               const directionLabel = bearingToRose8FullFr(listBearing);
               const distFromRef = haversineKm(refLat, refLng, s.lat, s.lng);
+              const t = travelById[s.sourceId];
               return (
               <li key={s.sourceId} className="border-b border-spotik-border last:border-b-0">
               <div className="flex min-w-0">
@@ -360,8 +524,34 @@ export function SpotsExplorer() {
                     <div className="mt-1 line-clamp-2 font-mono text-[10px] uppercase tracking-wide text-spotik-muted">
                       {s.address}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-spotik-orange">
-                      <span>DIST {distFromRef.toFixed(1)} KM</span>
+                    <div className="mt-2 flex flex-col gap-1 font-mono text-[10px] leading-relaxed">
+                      <div className="text-spotik-muted">
+                        Ligne droite{" "}
+                        <span className="tabular-nums text-spotik-orange">
+                          {distFromRef.toFixed(1)} km
+                        </span>
+                      </div>
+                      {t?.routeDistanceKm != null &&
+                      t.routeDurationSec != null ? (
+                        <div className="text-white">
+                          À pied ~{" "}
+                          <span className="tabular-nums text-spotik-orange">
+                            {t.routeDistanceKm}
+                          </span>{" "}
+                          km ·{" "}
+                          <span className="text-spotik-orange">
+                            {formatRouteDuration(t.routeDurationSec)}
+                          </span>
+                        </div>
+                      ) : travelLoading ? (
+                        <div className="text-[9px] uppercase tracking-wide text-spotik-muted">
+                          Itinéraire piéton…
+                        </div>
+                      ) : t != null ? (
+                        <div className="text-[9px] text-spotik-muted">
+                          Itinéraire piéton indisponible
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </Link>
@@ -379,7 +569,9 @@ export function SpotsExplorer() {
             })}
           {!spots.length && !spotsLoading ? (
             <li className="border-b border-spotik-border px-3 py-10 text-center font-mono text-xs uppercase tracking-widest text-spotik-muted">
-              AUCUN SPOT — RAYON OU MONGO
+              {equipmentFilters.length > 0
+                ? "AUCUN SPOT AVEC CES ÉQUIPEMENTS — ÉLARGIS OU DÉCOCHE"
+                : "AUCUN SPOT — RAYON OU MONGO"}
             </li>
           ) : null}
           </ul>
