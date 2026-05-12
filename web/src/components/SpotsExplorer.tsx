@@ -1,0 +1,316 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { SpotsMap } from "@/components/SpotsMap";
+import type { SpotApiRow } from "@/types/spot";
+
+const PARIS = { lat: 48.8566, lng: 2.3522 };
+
+const CARDINALS: { label: string; deg: number }[] = [
+  { label: "N", deg: 0 },
+  { label: "NE", deg: 45 },
+  { label: "E", deg: 90 },
+  { label: "SE", deg: 135 },
+  { label: "S", deg: 180 },
+  { label: "SO", deg: 225 },
+  { label: "O", deg: 270 },
+  { label: "NO", deg: 315 },
+];
+
+type ApiPayload = {
+  spots: SpotApiRow[];
+  count: number;
+  error?: string;
+};
+
+export function SpotsExplorer() {
+  const [view, setView] = useState<"map" | "list">("map");
+  const [user, setUser] = useState<{ lat: number; lng: number }>(PARIS);
+  const [geoStatus, setGeoStatus] = useState<string | null>(null);
+  const [radiusKm, setRadiusKm] = useState(100);
+  const [bearingDeg, setBearingDeg] = useState<number | null>(null);
+  const [bearingHalf, setBearingHalf] = useState(45);
+  const [spots, setSpots] = useState<SpotApiRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  const selectedSpot = useMemo(
+    () => spots.find((s) => s.sourceId === selectedId) ?? null,
+    [spots, selectedId],
+  );
+
+  const locate = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGeoStatus("GÉOLOC NON SUPPORTÉE");
+      return;
+    }
+    setGeoStatus("LOCALISATION…");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUser({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGeoStatus(null);
+      },
+      () => {
+        setGeoStatus("REFUS / INDISPONIBLE");
+      },
+      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 15_000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      const u = new URL("/api/spots", window.location.origin);
+      u.searchParams.set("lat", String(user.lat));
+      u.searchParams.set("lng", String(user.lng));
+      u.searchParams.set("radiusKm", String(radiusKm));
+      u.searchParams.set("limit", "80");
+      if (bearingDeg != null) {
+        u.searchParams.set("bearingDeg", String(bearingDeg));
+        u.searchParams.set("bearingHalfWidthDeg", String(bearingHalf));
+      }
+      try {
+        const res = await fetch(u.toString(), { signal: ctrl.signal });
+        const data = (await res.json()) as ApiPayload;
+        if (!res.ok) {
+          setError((data as { error?: string }).error ?? res.statusText);
+          setSpots([]);
+          return;
+        }
+        setSpots(data.spots ?? []);
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        setError(e instanceof Error ? e.message : String(e));
+        setSpots([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 280);
+    return () => {
+      ctrl.abort();
+      clearTimeout(t);
+    };
+  }, [user.lat, user.lng, radiusKm, bearingDeg, bearingHalf]);
+
+  return (
+    <div className="mx-auto flex min-h-dvh max-w-lg flex-col border-x border-spotik-border px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-[max(env(safe-area-inset-top),12px)]">
+      <header className="mb-4 border-b border-spotik-border pb-4">
+        <p className="spotik-label mb-1">STREET WORKOUT · FRANCE</p>
+        <h1 className="font-spotik text-[clamp(3.5rem,18vw,5.5rem)] leading-[0.9] tracking-wide text-white">
+          SPOTIK
+        </h1>
+        <p className="mt-2 font-mono text-[11px] leading-relaxed text-spotik-muted">
+          CARTE OU LISTE · TRI DISTANCE · FILTRE CAP (EX. SUD)
+        </p>
+      </header>
+
+      <div className="mb-3 flex flex-wrap items-stretch gap-0 border border-spotik-border">
+        <button type="button" onClick={locate} className="spotik-btn min-h-12 flex-1 border-r border-spotik-border sm:flex-none">
+          MA POSITION
+        </button>
+        <div className="flex min-h-12 flex-1">
+          <button
+            type="button"
+            onClick={() => setView("map")}
+            className={`flex-1 border-r border-spotik-border font-mono text-xs font-semibold uppercase tracking-widest ${
+              view === "map" ? "bg-spotik-orange text-black" : "bg-black text-white hover:bg-spotik-orange/20"
+            }`}
+          >
+            CARTE
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("list")}
+            className={`flex-1 font-mono text-xs font-semibold uppercase tracking-widest ${
+              view === "list" ? "bg-spotik-orange text-black" : "bg-black text-white hover:bg-spotik-orange/20"
+            }`}
+          >
+            LISTE
+          </button>
+        </div>
+        {loading ? (
+          <span className="flex min-w-[5rem] items-center justify-center border-l border-spotik-border px-2 font-mono text-[10px] uppercase tracking-widest text-spotik-orange">
+            SYNC…
+          </span>
+        ) : null}
+      </div>
+
+      {geoStatus ? (
+        <p className="spotik-label mb-2 border border-spotik-border bg-spotik-orange/10 px-2 py-1">
+          {geoStatus}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="mb-3 border border-red-600 bg-black px-3 py-2 font-mono text-xs uppercase tracking-wide text-red-500">
+          {error}
+        </p>
+      ) : null}
+
+      <section className="spotik-box mb-3 grid gap-4 p-4">
+        <div>
+          <span className="spotik-label">RAYON</span>
+          <div className="mt-1 flex items-baseline gap-2 border-b border-spotik-border pb-2">
+            <span className="font-mono text-2xl tabular-nums text-white">
+              {radiusKm}
+            </span>
+            <span className="font-mono text-xs text-spotik-muted">KM</span>
+          </div>
+          <input
+            type="range"
+            min={10}
+            max={300}
+            step={5}
+            value={radiusKm}
+            onChange={(e) => setRadiusKm(Number(e.target.value))}
+            className="mt-3 w-full"
+          />
+        </div>
+
+        <div>
+          <span className="spotik-label">CAP PRÉFÉRÉ</span>
+          <div className="mt-2 flex flex-wrap gap-0 border border-spotik-border">
+            <button
+              type="button"
+              onClick={() => setBearingDeg(null)}
+              className={`min-h-10 min-w-[3.25rem] border-r border-spotik-border font-mono text-xs font-bold uppercase ${
+                bearingDeg == null
+                  ? "bg-spotik-orange text-black"
+                  : "bg-black text-white hover:bg-white/5"
+              }`}
+            >
+              ALL
+            </button>
+            {CARDINALS.map((c, i) => (
+              <button
+                key={c.label}
+                type="button"
+                onClick={() => setBearingDeg(c.deg)}
+                className={`min-h-10 min-w-10 border-spotik-border font-mono text-xs font-bold ${
+                  i < CARDINALS.length - 1 ? "border-r" : ""
+                } ${
+                  bearingDeg === c.deg
+                    ? "bg-spotik-orange text-black"
+                    : "bg-black text-white hover:bg-white/5"
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {bearingDeg != null ? (
+            <div className="mt-4 border-t border-spotik-border pt-4">
+              <span className="spotik-label">OUVERTURE SECTEUR</span>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="font-mono text-xl tabular-nums text-spotik-orange">
+                  ±{bearingHalf}°
+                </span>
+              </div>
+              <input
+                type="range"
+                min={15}
+                max={90}
+                step={5}
+                value={bearingHalf}
+                onChange={(e) => setBearingHalf(Number(e.target.value))}
+                className="mt-2 w-full"
+              />
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {view === "map" ? (
+        <SpotsMap
+          spots={spots}
+          userLat={user.lat}
+          userLng={user.lng}
+          selectedId={selectedId}
+          onSelectSpot={setSelectedId}
+        />
+      ) : (
+        <ul className="flex max-h-[min(60dvh,520px)] flex-col gap-0 overflow-y-auto border border-spotik-border">
+          {spots.map((s) => (
+            <li key={s.sourceId} className="border-b border-spotik-border last:border-b-0">
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedId(selectedId === s.sourceId ? null : s.sourceId)
+                }
+                className={`flex w-full gap-0 border-l-4 p-0 text-left transition-colors ${
+                  selectedId === s.sourceId
+                    ? "border-l-spotik-orange bg-spotik-orange/10"
+                    : "border-l-transparent hover:bg-white/[0.03]"
+                }`}
+              >
+                {(s.imageUrls?.[0] ?? s.thumbnailUrl) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={s.imageUrls?.[0] ?? s.thumbnailUrl!}
+                    alt=""
+                    className="h-20 w-20 shrink-0 border-r border-spotik-border object-cover"
+                  />
+                ) : (
+                  <div className="h-20 w-20 shrink-0 border-r border-spotik-border bg-spotik-border" />
+                )}
+                <div className="min-w-0 flex-1 p-3">
+                  <div className="font-spotik text-lg leading-tight tracking-wide text-white">
+                    {s.title.toUpperCase()}
+                  </div>
+                  <div className="mt-1 line-clamp-2 font-mono text-[10px] uppercase tracking-wide text-spotik-muted">
+                    {s.address}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-spotik-orange">
+                    <span>DIST {s.distanceKm.toFixed(1)} KM</span>
+                    <span>CAP {Math.round(s.bearingDeg)}°</span>
+                  </div>
+                </div>
+              </button>
+            </li>
+          ))}
+          {!spots.length && !loading ? (
+            <li className="border-b border-spotik-border px-3 py-10 text-center font-mono text-xs uppercase tracking-widest text-spotik-muted">
+              AUCUN SPOT — RAYON OU MONGO
+            </li>
+          ) : null}
+        </ul>
+      )}
+
+      {selectedSpot ? (
+        <aside className="sticky bottom-0 z-10 mt-3 border-2 border-white bg-black p-4">
+          <div className="flex justify-between gap-3 border-b border-spotik-border pb-3">
+            <div className="min-w-0">
+              <p className="spotik-label mb-1">SÉLECTION</p>
+              <div className="font-spotik text-xl leading-tight tracking-wide text-white">
+                {selectedSpot.title.toUpperCase()}
+              </div>
+              <div className="mt-2 font-mono text-xs text-spotik-orange">
+                DIST {selectedSpot.distanceKm.toFixed(1)} KM · CAP{" "}
+                {Math.round(selectedSpot.bearingDeg)}°
+              </div>
+            </div>
+            <button
+              type="button"
+              className="h-10 shrink-0 border border-white px-3 font-mono text-[10px] font-bold uppercase tracking-widest text-white hover:bg-spotik-orange hover:text-black"
+              onClick={() => setSelectedId(null)}
+            >
+              FERMER
+            </button>
+          </div>
+          {selectedSpot.sourceCanonicalUrl ? (
+            <a
+              href={selectedSpot.sourceCanonicalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-block border border-spotik-orange px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-spotik-orange hover:bg-spotik-orange hover:text-black"
+            >
+              SOURCE EXTERNE →
+            </a>
+          ) : null}
+        </aside>
+      ) : null}
+    </div>
+  );
+}

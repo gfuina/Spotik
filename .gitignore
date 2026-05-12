@@ -1,0 +1,6 @@
+# Secrets — ne jamais versionner / envoyer (git push, etc.)
+.env
+.env.*
+!.env.example
+
+.venv/
