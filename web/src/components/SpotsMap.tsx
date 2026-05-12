@@ -1,29 +1,43 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import Map, { Layer, Source } from "react-map-gl/mapbox";
-import type { MapMouseEvent } from "react-map-gl/mapbox";
+import type { MapMouseEvent, MapRef, ViewStateChangeEvent } from "react-map-gl/mapbox";
 import type { SpotApiRow } from "@/types/spot";
+import { haversineKm } from "@/lib/geo";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 const MAP_STYLE = "mapbox://styles/mapbox/dark-v11";
 
+const GPS_SEPARATE_KM = 0.08;
+
 type Props = {
   spots: SpotApiRow[];
-  userLat: number;
-  userLng: number;
+  /** Centre utilisé pour l’API (marqueur orange « origine recherche ») */
+  searchCenterLat: number;
+  searchCenterLng: number;
+  /** Position GPS si connue (2e marqueur si assez loin du centre de recherche) */
+  gpsLocation: { lat: number; lng: number } | null;
   selectedId: number | null;
   onSelectSpot: (id: number | null) => void;
+  /** Centre géographique actuel de la vue carte */
+  onViewportCenterChange: (lat: number, lng: number) => void;
+  /** Incrémenté quand le parent veut recentrer la caméra (géoloc, « rechercher ici ») */
+  mapFocusNonce: number;
 };
 
 export function SpotsMap({
   spots,
-  userLat,
-  userLng,
+  searchCenterLat,
+  searchCenterLng,
+  gpsLocation,
   selectedId,
   onSelectSpot,
+  onViewportCenterChange,
+  mapFocusNonce,
 }: Props) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const mapRef = useRef<MapRef>(null);
 
   const spotsGeojson = useMemo(
     () => ({
@@ -44,19 +58,61 @@ export function SpotsMap({
     [spots],
   );
 
-  const userGeojson = useMemo(
+  const searchGeojson = useMemo(
     () => ({
       type: "FeatureCollection" as const,
       features: [
         {
           type: "Feature" as const,
           properties: {},
-          geometry: { type: "Point" as const, coordinates: [userLng, userLat] },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [searchCenterLng, searchCenterLat],
+          },
         },
       ],
     }),
-    [userLat, userLng],
+    [searchCenterLat, searchCenterLng],
   );
+
+  const showGpsMarker =
+    gpsLocation != null &&
+    haversineKm(
+      searchCenterLat,
+      searchCenterLng,
+      gpsLocation.lat,
+      gpsLocation.lng,
+    ) > GPS_SEPARATE_KM;
+
+  const gpsGeojson = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: showGpsMarker
+        ? [
+            {
+              type: "Feature" as const,
+              properties: {},
+              geometry: {
+                type: "Point" as const,
+                coordinates: [gpsLocation!.lng, gpsLocation!.lat],
+              },
+            },
+          ]
+        : [],
+    }),
+    [gpsLocation, showGpsMarker],
+  );
+
+  useEffect(() => {
+    if (mapFocusNonce === 0) return;
+    const map = mapRef.current;
+    if (!map) return;
+    map.flyTo({
+      center: [searchCenterLng, searchCenterLat],
+      duration: 550,
+      essential: true,
+    });
+  }, [mapFocusNonce, searchCenterLat, searchCenterLng]);
 
   const onMapClick = useCallback(
     (e: MapMouseEvent) => {
@@ -68,6 +124,13 @@ export function SpotsMap({
       onSelectSpot(Number(f.properties.sourceId));
     },
     [onSelectSpot],
+  );
+
+  const onMoveEnd = useCallback(
+    (e: ViewStateChangeEvent) => {
+      onViewportCenterChange(e.viewState.latitude, e.viewState.longitude);
+    },
+    [onViewportCenterChange],
   );
 
   if (!token) {
@@ -87,20 +150,22 @@ export function SpotsMap({
   return (
     <div className="relative h-[min(70dvh,560px)] w-full overflow-hidden border-2 border-spotik-border bg-black">
       <Map
+        ref={mapRef}
         mapboxAccessToken={token}
         mapStyle={MAP_STYLE}
         initialViewState={{
-          latitude: userLat,
-          longitude: userLng,
+          latitude: searchCenterLat,
+          longitude: searchCenterLng,
           zoom: 10,
         }}
         interactiveLayerIds={["unclustered-point", "clusters"]}
         onClick={onMapClick}
+        onMoveEnd={onMoveEnd}
         style={{ width: "100%", height: "100%" }}
       >
-        <Source id="user" type="geojson" data={userGeojson}>
+        <Source id="search-origin" type="geojson" data={searchGeojson}>
           <Layer
-            id="user-circle"
+            id="search-circle"
             type="circle"
             paint={{
               "circle-radius": 11,
@@ -110,6 +175,21 @@ export function SpotsMap({
             }}
           />
         </Source>
+        {showGpsMarker ? (
+          <Source id="gps" type="geojson" data={gpsGeojson}>
+            <Layer
+              id="gps-circle"
+              type="circle"
+              paint={{
+                "circle-radius": 7,
+                "circle-color": "#ffffff",
+                "circle-opacity": 0.95,
+                "circle-stroke-width": 2,
+                "circle-stroke-color": "#ff4d00",
+              }}
+            />
+          </Source>
+        ) : null}
         <Source
           id="spots"
           type="geojson"

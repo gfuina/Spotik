@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SpotsMap } from "@/components/SpotsMap";
 import type { SpotApiRow } from "@/types/spot";
+import { haversineKm } from "@/lib/geo";
 
 const PARIS = { lat: 48.8566, lng: 2.3522 };
 
@@ -23,9 +24,17 @@ type ApiPayload = {
   error?: string;
 };
 
+const SEARCH_HERE_MIN_KM = 0.35;
+
 export function SpotsExplorer() {
   const [view, setView] = useState<"map" | "list">("map");
-  const [user, setUser] = useState<{ lat: number; lng: number }>(PARIS);
+  const [searchCenter, setSearchCenter] = useState(PARIS);
+  const [mapViewportCenter, setMapViewportCenter] = useState(PARIS);
+  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
+  /** >0 déclenche un flyTo côté carte (géoloc uniquement) */
+  const [mapFocusNonce, setMapFocusNonce] = useState(0);
   const [geoStatus, setGeoStatus] = useState<string | null>(null);
   const [radiusKm, setRadiusKm] = useState(100);
   const [bearingDeg, setBearingDeg] = useState<number | null>(null);
@@ -48,7 +57,12 @@ export function SpotsExplorer() {
     setGeoStatus("LOCALISATION…");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setUser({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setGpsLocation({ lat, lng });
+        setSearchCenter({ lat, lng });
+        setMapViewportCenter({ lat, lng });
+        setMapFocusNonce((n) => n + 1);
         setGeoStatus(null);
       },
       () => {
@@ -64,8 +78,8 @@ export function SpotsExplorer() {
       setLoading(true);
       setError(null);
       const u = new URL("/api/spots", window.location.origin);
-      u.searchParams.set("lat", String(user.lat));
-      u.searchParams.set("lng", String(user.lng));
+      u.searchParams.set("lat", String(searchCenter.lat));
+      u.searchParams.set("lng", String(searchCenter.lng));
       u.searchParams.set("radiusKm", String(radiusKm));
       u.searchParams.set("limit", "80");
       if (bearingDeg != null) {
@@ -93,7 +107,34 @@ export function SpotsExplorer() {
       ctrl.abort();
       clearTimeout(t);
     };
-  }, [user.lat, user.lng, radiusKm, bearingDeg, bearingHalf]);
+  }, [searchCenter.lat, searchCenter.lng, radiusKm, bearingDeg, bearingHalf]);
+
+  const searchHereDeltaKm = useMemo(
+    () =>
+      haversineKm(
+        searchCenter.lat,
+        searchCenter.lng,
+        mapViewportCenter.lat,
+        mapViewportCenter.lng,
+      ),
+    [
+      searchCenter.lat,
+      searchCenter.lng,
+      mapViewportCenter.lat,
+      mapViewportCenter.lng,
+    ],
+  );
+
+  const showSearchHere =
+    view === "map" && searchHereDeltaKm >= SEARCH_HERE_MIN_KM;
+
+  const searchHere = useCallback(() => {
+    setSearchCenter(mapViewportCenter);
+  }, [mapViewportCenter]);
+
+  const onViewportCenterChange = useCallback((lat: number, lng: number) => {
+    setMapViewportCenter({ lat, lng });
+  }, []);
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col border-x border-spotik-border px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-[max(env(safe-area-inset-top),12px)]">
@@ -223,13 +264,27 @@ export function SpotsExplorer() {
       </section>
 
       {view === "map" ? (
-        <SpotsMap
-          spots={spots}
-          userLat={user.lat}
-          userLng={user.lng}
-          selectedId={selectedId}
-          onSelectSpot={setSelectedId}
-        />
+        <div className="relative">
+          {showSearchHere ? (
+            <button
+              type="button"
+              onClick={searchHere}
+              className="absolute left-1/2 top-3 z-20 -translate-x-1/2 border-2 border-white bg-black px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-none hover:border-spotik-orange hover:bg-spotik-orange hover:text-black"
+            >
+              Rechercher ici
+            </button>
+          ) : null}
+          <SpotsMap
+            spots={spots}
+            searchCenterLat={searchCenter.lat}
+            searchCenterLng={searchCenter.lng}
+            gpsLocation={gpsLocation}
+            selectedId={selectedId}
+            onSelectSpot={setSelectedId}
+            onViewportCenterChange={onViewportCenterChange}
+            mapFocusNonce={mapFocusNonce}
+          />
+        </div>
       ) : (
         <ul className="flex max-h-[min(60dvh,520px)] flex-col gap-0 overflow-y-auto border border-spotik-border">
           {spots.map((s) => (
