@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const PROFILE = "mapbox/walking";
+const PROFILE = "mapbox/driving";
 /** Mapbox Matrix : max 25 coordonnées (1 origine + 24 destinations par requête). */
 const MAX_DESTINATIONS_PER_BATCH = 24;
 const MAX_SPOTS = 80;

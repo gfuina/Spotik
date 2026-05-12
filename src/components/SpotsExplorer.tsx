@@ -351,7 +351,7 @@ export function SpotsExplorer() {
       ) : null}
       {travelError && !spotsLoading ? (
         <p className="mb-2 border border-spotik-border bg-black px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-spotik-muted">
-          Itinéraire piéton : {travelError}
+          Itinéraire voiture : {travelError}
         </p>
       ) : null}
 
@@ -534,7 +534,7 @@ export function SpotsExplorer() {
                       {t?.routeDistanceKm != null &&
                       t.routeDurationSec != null ? (
                         <div className="text-white">
-                          À pied ~{" "}
+                          En voiture ~{" "}
                           <span className="tabular-nums text-spotik-orange">
                             {t.routeDistanceKm}
                           </span>{" "}
@@ -545,11 +545,11 @@ export function SpotsExplorer() {
                         </div>
                       ) : travelLoading ? (
                         <div className="text-[9px] uppercase tracking-wide text-spotik-muted">
-                          Itinéraire piéton…
+                          Itinéraire voiture…
                         </div>
                       ) : t != null ? (
                         <div className="text-[9px] text-spotik-muted">
-                          Itinéraire piéton indisponible
+                          Itinéraire voiture indisponible
                         </div>
                       ) : null}
                     </div>
