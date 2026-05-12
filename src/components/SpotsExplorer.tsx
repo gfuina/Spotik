@@ -26,6 +26,10 @@ type ApiPayload = {
 
 const SEARCH_HERE_MIN_KM = 0.35;
 
+function googleMapsSearchUrl(lat: number, lng: number) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+}
+
 export function SpotsExplorer() {
   const [view, setView] = useState<"map" | "list">("map");
   const [searchCenter, setSearchCenter] = useState(PARIS);
@@ -289,40 +293,50 @@ export function SpotsExplorer() {
         <ul className="flex max-h-[min(60dvh,520px)] flex-col gap-0 overflow-y-auto border border-spotik-border">
           {spots.map((s) => (
             <li key={s.sourceId} className="border-b border-spotik-border last:border-b-0">
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedId(selectedId === s.sourceId ? null : s.sourceId)
-                }
-                className={`flex w-full gap-0 border-l-4 p-0 text-left transition-colors ${
-                  selectedId === s.sourceId
-                    ? "border-l-spotik-orange bg-spotik-orange/10"
-                    : "border-l-transparent hover:bg-white/[0.03]"
-                }`}
-              >
-                {(s.imageUrls?.[0] ?? s.thumbnailUrl) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={s.imageUrls?.[0] ?? s.thumbnailUrl!}
-                    alt=""
-                    className="h-20 w-20 shrink-0 border-r border-spotik-border object-cover"
-                  />
-                ) : (
-                  <div className="h-20 w-20 shrink-0 border-r border-spotik-border bg-spotik-border" />
-                )}
-                <div className="min-w-0 flex-1 p-3">
-                  <div className="font-spotik text-lg leading-tight tracking-wide text-white">
-                    {s.title.toUpperCase()}
+              <div className="flex min-w-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedId(selectedId === s.sourceId ? null : s.sourceId)
+                  }
+                  className={`flex min-w-0 flex-1 gap-0 border-l-4 p-0 text-left transition-colors ${
+                    selectedId === s.sourceId
+                      ? "border-l-spotik-orange bg-spotik-orange/10"
+                      : "border-l-transparent hover:bg-white/[0.03]"
+                  }`}
+                >
+                  {(s.imageUrls?.[0] ?? s.thumbnailUrl) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={s.imageUrls?.[0] ?? s.thumbnailUrl!}
+                      alt=""
+                      className="h-20 w-20 shrink-0 border-r border-spotik-border object-cover"
+                    />
+                  ) : (
+                    <div className="h-20 w-20 shrink-0 border-r border-spotik-border bg-spotik-border" />
+                  )}
+                  <div className="min-w-0 flex-1 p-3">
+                    <div className="font-spotik text-lg leading-tight tracking-wide text-white">
+                      {s.title.toUpperCase()}
+                    </div>
+                    <div className="mt-1 line-clamp-2 font-mono text-[10px] uppercase tracking-wide text-spotik-muted">
+                      {s.address}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-spotik-orange">
+                      <span>DIST {s.distanceKm.toFixed(1)} KM</span>
+                      <span>CAP {Math.round(s.bearingDeg)}°</span>
+                    </div>
                   </div>
-                  <div className="mt-1 line-clamp-2 font-mono text-[10px] uppercase tracking-wide text-spotik-muted">
-                    {s.address}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-spotik-orange">
-                    <span>DIST {s.distanceKm.toFixed(1)} KM</span>
-                    <span>CAP {Math.round(s.bearingDeg)}°</span>
-                  </div>
-                </div>
-              </button>
+                </button>
+                <a
+                  href={googleMapsSearchUrl(s.lat, s.lng)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex w-[4.5rem] shrink-0 flex-col items-center justify-center gap-1 border-l border-spotik-border bg-black px-1 py-2 font-mono text-[8px] font-bold uppercase leading-tight tracking-wide text-white hover:bg-spotik-orange hover:text-black"
+                >
+                  <span>Maps</span>
+                </a>
+              </div>
             </li>
           ))}
           {!spots.length && !loading ? (
@@ -354,16 +368,26 @@ export function SpotsExplorer() {
               FERMER
             </button>
           </div>
-          {selectedSpot.sourceCanonicalUrl ? (
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <a
-              href={selectedSpot.sourceCanonicalUrl}
+              href={googleMapsSearchUrl(selectedSpot.lat, selectedSpot.lng)}
               target="_blank"
               rel="noreferrer"
-              className="mt-3 inline-block border border-spotik-orange px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-spotik-orange hover:bg-spotik-orange hover:text-black"
+              className="inline-flex items-center justify-center border border-white px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-white hover:bg-white hover:text-black"
             >
-              SOURCE EXTERNE →
+              Ouvrir sur Google Maps
             </a>
-          ) : null}
+            {selectedSpot.sourceCanonicalUrl ? (
+              <a
+                href={selectedSpot.sourceCanonicalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center border border-spotik-orange px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-spotik-orange hover:bg-spotik-orange hover:text-black"
+              >
+                Source externe →
+              </a>
+            ) : null}
+          </div>
         </aside>
       ) : null}
     </div>

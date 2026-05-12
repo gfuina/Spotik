@@ -6,7 +6,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   transpilePackages: ["mapbox-gl"],
-  outputFileTracingRoot: path.join(__dirname, ".."),
+  // Évite que Next prenne un lockfile parent (ex. ~/package-lock.json) comme racine workspace.
+  outputFileTracingRoot: __dirname,
 };
 
 export default nextConfig;
