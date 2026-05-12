@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SpotsMap } from "@/components/SpotsMap";
+import { SpotListCompass } from "@/components/SpotListCompass";
 import type { SpotApiRow } from "@/types/spot";
-import { haversineKm } from "@/lib/geo";
+import { bearingDeg as geoBearingDeg, bearingToRose8FullFr, haversineKm } from "@/lib/geo";
 
 const PARIS = { lat: 48.8566, lng: 2.3522 };
 
@@ -174,6 +175,8 @@ export function SpotsExplorer() {
     [bearingDeg, radiusKm, bearingHalf],
   );
 
+  const spotsLoading = autoGeoPending || loading;
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col border-x border-spotik-border px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-[max(env(safe-area-inset-top),12px)]">
       <header className="mb-4 border-b border-spotik-border pb-4">
@@ -214,11 +217,6 @@ export function SpotsExplorer() {
             CARTE
           </button>
         </div>
-        {loading ? (
-          <span className="flex min-w-[5rem] items-center justify-center border-l border-spotik-border px-2 font-mono text-[10px] uppercase tracking-widest text-spotik-orange">
-            SYNC…
-          </span>
-        ) : null}
       </div>
 
       {geoStatus ? (
@@ -325,9 +323,20 @@ export function SpotsExplorer() {
       </details>
 
       {view === "list" ? (
-        <ul className="flex max-h-[min(60dvh,520px)] flex-col gap-0 overflow-y-auto border border-spotik-border">
-          {spots.map((s) => (
-            <li key={s.sourceId} className="border-b border-spotik-border last:border-b-0">
+        <div className="relative min-h-[min(50dvh,400px)] border border-spotik-border bg-black">
+          <ul
+            className={`flex max-h-[min(60dvh,520px)] flex-col gap-0 overflow-y-auto ${
+              spotsLoading ? "pointer-events-none select-none opacity-25" : ""
+            }`}
+          >
+            {spots.map((s) => {
+              const refLat = gpsLocation?.lat ?? searchCenter.lat;
+              const refLng = gpsLocation?.lng ?? searchCenter.lng;
+              const listBearing = geoBearingDeg(refLat, refLng, s.lat, s.lng);
+              const directionLabel = bearingToRose8FullFr(listBearing);
+              const distFromRef = haversineKm(refLat, refLng, s.lat, s.lng);
+              return (
+              <li key={s.sourceId} className="border-b border-spotik-border last:border-b-0">
               <div className="flex min-w-0">
                 <Link
                   href={`/spot/${s.sourceId}`}
@@ -343,6 +352,7 @@ export function SpotsExplorer() {
                   ) : (
                     <div className="h-20 w-20 shrink-0 border-r border-spotik-border bg-spotik-border" />
                   )}
+                  <SpotListCompass bearingDeg={listBearing} label={directionLabel} />
                   <div className="min-w-0 flex-1 p-3">
                     <div className="font-spotik text-lg leading-tight tracking-wide text-white">
                       {s.title.toUpperCase()}
@@ -351,8 +361,7 @@ export function SpotsExplorer() {
                       {s.address}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-spotik-orange">
-                      <span>DIST {s.distanceKm.toFixed(1)} KM</span>
-                      <span>CAP {Math.round(s.bearingDeg)}°</span>
+                      <span>DIST {distFromRef.toFixed(1)} KM</span>
                     </div>
                   </div>
                 </Link>
@@ -366,16 +375,34 @@ export function SpotsExplorer() {
                 </a>
               </div>
             </li>
-          ))}
-          {!spots.length && !loading && !autoGeoPending ? (
+              );
+            })}
+          {!spots.length && !spotsLoading ? (
             <li className="border-b border-spotik-border px-3 py-10 text-center font-mono text-xs uppercase tracking-widest text-spotik-muted">
               AUCUN SPOT — RAYON OU MONGO
             </li>
           ) : null}
-        </ul>
+          </ul>
+          {spotsLoading ? (
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/90 px-4"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <div
+                className="h-10 w-10 shrink-0 animate-spin rounded-full border-2 border-spotik-border border-t-spotik-orange border-r-spotik-orange"
+                aria-hidden
+              />
+              <p className="spotik-label text-center">
+                {autoGeoPending ? "LOCALISATION…" : "CHARGEMENT DES SPOTS…"}
+              </p>
+            </div>
+          ) : null}
+        </div>
       ) : (
-        <div className="relative">
-          {showSearchHere ? (
+        <div className="relative w-full">
+          {showSearchHere && !spotsLoading ? (
             <button
               type="button"
               onClick={searchHere}
@@ -393,6 +420,22 @@ export function SpotsExplorer() {
             onViewportCenterChange={onViewportCenterChange}
             mapFocusNonce={mapFocusNonce}
           />
+          {spotsLoading ? (
+            <div
+              className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/90 px-4"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <div
+                className="h-10 w-10 shrink-0 animate-spin rounded-full border-2 border-spotik-border border-t-spotik-orange border-r-spotik-orange"
+                aria-hidden
+              />
+              <p className="spotik-label text-center">
+                {autoGeoPending ? "LOCALISATION…" : "CHARGEMENT DES SPOTS…"}
+              </p>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

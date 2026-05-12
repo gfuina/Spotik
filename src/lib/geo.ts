@@ -39,6 +39,32 @@ export function bearingDeg(
   return ((toDeg(θ) % 360) + 360) % 360;
 }
 
+/** Rose des vents 8 points (FR) à partir d’un cap 0–360°. */
+export function bearingToRose8(bearingDeg: number): string {
+  const b = ((bearingDeg % 360) + 360) % 360;
+  const labels = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"] as const;
+  const i = Math.floor(((b + 22.5) % 360) / 45) % 8;
+  return labels[i];
+}
+
+const ROSE8_FULL_FR = [
+  "Nord",
+  "Nord-est",
+  "Est",
+  "Sud-est",
+  "Sud",
+  "Sud-ouest",
+  "Ouest",
+  "Nord-ouest",
+] as const;
+
+/** Libellé complet (ex. « Sud-est »), même secteurs que `bearingToRose8`. */
+export function bearingToRose8FullFr(bearingDeg: number): string {
+  const b = ((bearingDeg % 360) + 360) % 360;
+  const i = Math.floor(((b + 22.5) % 360) / 45) % 8;
+  return ROSE8_FULL_FR[i];
+}
+
 /** Smallest absolute difference between two headings in [-180, 180] */
 export function angularDiffDeg(a: number, b: number): number {
   let d = ((a - b) % 360) + 360;
